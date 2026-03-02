@@ -66,7 +66,7 @@ let server: import("node:http").Server | undefined;
 
 async function start(): Promise<void> {
   try {
-    await mongoose.connect(MONGO_URI);
+    await mongoose.connect("mongodb+srv://yakobyte:AU5ZldseqnrEtMUK@obaol-cluster.oq0ij.mongodb.net/oboal");
     // eslint-disable-next-line no-console
     console.log("MongoDB connected.");
 
