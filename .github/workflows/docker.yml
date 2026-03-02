@@ -32,6 +32,4 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/obaol-api:latest
-            ghcr.io/${{ github.repository_owner }}/obaol-api:${{ github.sha }}
+          tags: ghcr.io/yoxaz-verse/obaol-api:latest
