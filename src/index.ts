@@ -3,46 +3,40 @@ import mongoose from "mongoose";
 import app from "./app.js";
 
 const PORT = Number(process.env.PORT) || 3000;
-const rawMongoUri =
-  process.env.MONGO_URI ||
-  process.env.MONGODB_URI ||
-  process.env.MONGO_URL;
 
-function requireEnv(value: string | undefined, message: string): string {
-  if (!value) {
+function validateEnv() {
+  const missing = [];
+  if (!process.env.MONGO_URI && !process.env.MONGODB_URI && !process.env.MONGO_URL) missing.push("MONGO_URI");
+  if (!process.env.API_KEY_SECRET) missing.push("API_KEY_SECRET");
+  if (!process.env.JWT_SECRET && !process.env.DEV_JWT_SECRET) missing.push("JWT_SECRET");
+  if (!process.env.GOOGLE_CLIENT_ID) missing.push("GOOGLE_CLIENT_ID");
+  if (!process.env.GOOGLE_CLIENT_SECRET) missing.push("GOOGLE_CLIENT_SECRET");
+
+  if (missing.length > 0) {
     // eslint-disable-next-line no-console
-    console.error(message);
-    process.exit(1);
+    console.error("CRITICAL: Missing required environment variables:", missing.join(", "));
+    // eslint-disable-next-line no-console
+    console.error("The application will likely crash or malfunction.");
   }
-  return value;
+
+  // BASE_URL has a fallback in passport.js, so we just warn here
+  if (!process.env.BASE_URL) {
+    // eslint-disable-next-line no-console
+    console.warn("WARNING: BASE_URL is missing. Falling back to default.");
+  }
 }
 
-const MONGO_URI = requireEnv(
-  rawMongoUri,
-  "Mongo URI is missing. Set one of: MONGO_URI, MONGODB_URI, or MONGO_URL."
-);
-const API_KEY_SECRET = requireEnv(
-  process.env.API_KEY_SECRET,
-  "API_KEY_SECRET is missing."
-);
-const JWT_SECRET = requireEnv(
-  process.env.JWT_SECRET || process.env.DEV_JWT_SECRET,
-  "JWT_SECRET is missing."
-);
-const GOOGLE_CLIENT_ID = requireEnv(
-  process.env.GOOGLE_CLIENT_ID,
-  "GOOGLE_CLIENT_ID is missing."
-);
-const GOOGLE_CLIENT_SECRET = requireEnv(
-  process.env.GOOGLE_CLIENT_SECRET,
-  "GOOGLE_CLIENT_SECRET is missing."
-);
-const BASE_URL = requireEnv(process.env.BASE_URL, "BASE_URL is missing.");
+validateEnv();
+
+const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || process.env.MONGO_URL || "";
 
 let server: import("node:http").Server | undefined;
 
 async function start(): Promise<void> {
   try {
+    // eslint-disable-next-line no-console
+    console.log(`Starting server in ${process.env.NODE_ENV || "development"} mode...`);
+
     await mongoose.connect(MONGO_URI);
     // eslint-disable-next-line no-console
     console.log("MongoDB connected.");
@@ -50,6 +44,8 @@ async function start(): Promise<void> {
     server = app.listen(PORT, "0.0.0.0", () => {
       // eslint-disable-next-line no-console
       console.log(`obaol-api listening on port ${PORT}`);
+      // eslint-disable-next-line no-console
+      console.log(`Health check available at: http://localhost:${PORT}/health`);
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
