@@ -1,72 +1,49 @@
-import fs from "node:fs";
-import path from "node:path";
+import "./loadEnv.js";
 import mongoose from "mongoose";
 import app from "./app.js";
 
-let dotenvLoaded = false;
-const localEnvPath = path.join(process.cwd(), ".env");
-if (fs.existsSync(localEnvPath)) {
-  // Load local env file only when present (dev/local workflows).
-  // Production should pass environment variables directly.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require("dotenv").config();
-  dotenvLoaded = true;
-}
-
-if (dotenvLoaded) {
-  // eslint-disable-next-line no-console
-  console.log("Loaded environment variables from local .env");
-}
-
 const PORT = Number(process.env.PORT) || 3000;
-const MONGO_URI = process.env.MONGO_URI;
-const API_KEY_SECRET = process.env.API_KEY_SECRET;
-const JWT_SECRET = process.env.JWT_SECRET || process.env.DEV_JWT_SECRET;
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const BASE_URL = process.env.BASE_URL;
+const rawMongoUri =
+  process.env.MONGO_URI ||
+  process.env.MONGODB_URI ||
+  process.env.MONGO_URL;
 
-if (!MONGO_URI) {
-  // eslint-disable-next-line no-console
-  console.error("MONGO_URI is missing.");
-  process.exit(1);
+function requireEnv(value: string | undefined, message: string): string {
+  if (!value) {
+    // eslint-disable-next-line no-console
+    console.error(message);
+    process.exit(1);
+  }
+  return value;
 }
 
-if (!API_KEY_SECRET) {
-  // eslint-disable-next-line no-console
-  console.error("API_KEY_SECRET is missing.");
-  process.exit(1);
-}
-
-if (!JWT_SECRET) {
-  // eslint-disable-next-line no-console
-  console.error("JWT_SECRET is missing.");
-  process.exit(1);
-}
-
-if (!GOOGLE_CLIENT_ID) {
-  // eslint-disable-next-line no-console
-  console.error("GOOGLE_CLIENT_ID is missing.");
-  process.exit(1);
-}
-
-if (!GOOGLE_CLIENT_SECRET) {
-  // eslint-disable-next-line no-console
-  console.error("GOOGLE_CLIENT_SECRET is missing.");
-  process.exit(1);
-}
-
-if (!BASE_URL) {
-  // eslint-disable-next-line no-console
-  console.error("BASE_URL is missing.");
-  process.exit(1);
-}
+const MONGO_URI = requireEnv(
+  rawMongoUri,
+  "Mongo URI is missing. Set one of: MONGO_URI, MONGODB_URI, or MONGO_URL."
+);
+const API_KEY_SECRET = requireEnv(
+  process.env.API_KEY_SECRET,
+  "API_KEY_SECRET is missing."
+);
+const JWT_SECRET = requireEnv(
+  process.env.JWT_SECRET || process.env.DEV_JWT_SECRET,
+  "JWT_SECRET is missing."
+);
+const GOOGLE_CLIENT_ID = requireEnv(
+  process.env.GOOGLE_CLIENT_ID,
+  "GOOGLE_CLIENT_ID is missing."
+);
+const GOOGLE_CLIENT_SECRET = requireEnv(
+  process.env.GOOGLE_CLIENT_SECRET,
+  "GOOGLE_CLIENT_SECRET is missing."
+);
+const BASE_URL = requireEnv(process.env.BASE_URL, "BASE_URL is missing.");
 
 let server: import("node:http").Server | undefined;
 
 async function start(): Promise<void> {
   try {
-    await mongoose.connect("mongodb+srv://yakobyte:AU5ZldseqnrEtMUK@obaol-cluster.oq0ij.mongodb.net/oboal");
+    await mongoose.connect(MONGO_URI);
     // eslint-disable-next-line no-console
     console.log("MongoDB connected.");
 
