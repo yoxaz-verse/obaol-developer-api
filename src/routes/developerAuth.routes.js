@@ -91,6 +91,12 @@ router.get('/google/callback', (req, res, next) => {
       const token = issueDeveloperJwt(developer);
       const state = parseState(String(req.query.state || ''));
       const redirectUri = String(state.redirectUri || '').trim();
+      const fallbackOrigin = String(process.env.FRONTEND_ORIGIN || '').trim().replace(/\/+$/, '');
+      const fallbackRedirectUri = fallbackOrigin ? `${fallbackOrigin}/developer/login` : '';
+      const finalRedirectUri =
+        redirectUri && isAllowedRedirectUri(redirectUri)
+          ? redirectUri
+          : (fallbackRedirectUri && isAllowedRedirectUri(fallbackRedirectUri) ? fallbackRedirectUri : '');
 
       const finalizeJson = () =>
         res.json({
@@ -107,8 +113,8 @@ router.get('/google/callback', (req, res, next) => {
         if (req.session) {
           req.session.destroy(() => {
             res.clearCookie('connect.sid');
-            if (redirectUri && isAllowedRedirectUri(redirectUri)) {
-              const destination = new URL(redirectUri);
+            if (finalRedirectUri) {
+              const destination = new URL(finalRedirectUri);
               destination.searchParams.set('token', token);
               destination.searchParams.set('email', String(developer.email || ''));
               destination.searchParams.set('name', String(developer.name || ''));
@@ -118,8 +124,8 @@ router.get('/google/callback', (req, res, next) => {
           });
           return;
         }
-        if (redirectUri && isAllowedRedirectUri(redirectUri)) {
-          const destination = new URL(redirectUri);
+        if (finalRedirectUri) {
+          const destination = new URL(finalRedirectUri);
           destination.searchParams.set('token', token);
           destination.searchParams.set('email', String(developer.email || ''));
           destination.searchParams.set('name', String(developer.name || ''));
