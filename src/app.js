@@ -38,6 +38,11 @@ const ALLOWED_ORIGINS = new Set([
   ...ENV_ALLOWED_ORIGINS
 ]);
 
+app.use((req, res, next) => {
+  res.setHeader('X-Accel-Buffering', 'no');
+  next();
+});
+
 app.use(helmet());
 app.use(
   cors({
@@ -122,9 +127,6 @@ app.get('/openapi.yaml', (_req, res) => {
   res.type('application/yaml');
   return res.sendFile(filePath);
 });
-
-// Mount /mcp before 404 handler
-app.use('/mcp', mcpServer);
 
 app.use('/api/developer/auth', developerAuthRoutes);
 app.use('/v1', v1Routes);
