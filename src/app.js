@@ -12,6 +12,7 @@ const session = require('express-session');
 const passport = require('passport');
 const v1Routes = require('./routes/v1');
 const developerAuthRoutes = require('./routes/developerAuth.routes');
+const mcpRoutes = require('./routes/mcp');
 const { baselineLimiter } = require('./middleware/rateLimiter');
 const { configurePassport } = require('./config/passport');
 
@@ -120,6 +121,7 @@ app.get('/openapi.yaml', (_req, res) => {
 
 app.use('/api/developer/auth', developerAuthRoutes);
 app.use('/v1', v1Routes);
+app.use('/mcp', mcpRoutes);
 
 app.use((_req, res) => {
   res.status(404).json({ success: false, message: 'Route not found.' });

@@ -46,6 +46,8 @@ async function start(): Promise<void> {
       console.log(`obaol-api listening on port ${PORT}`);
       // eslint-disable-next-line no-console
       console.log(`Health check available at: http://localhost:${PORT}/health`);
+      // eslint-disable-next-line no-console
+      console.log(`MCP endpoint available at: http://localhost:${PORT}/mcp`);
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
