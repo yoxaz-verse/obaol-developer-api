@@ -43,10 +43,17 @@ function isAllowedRedirectUri(redirectUri) {
     const url = new URL(redirectUri);
     const base = process.env.BASE_URL || '';
     const frontendOrigin = process.env.FRONTEND_ORIGIN || '';
+    const toOrigin = (value) => {
+      try {
+        return new URL(String(value).trim()).origin;
+      } catch (_error) {
+        return '';
+      }
+    };
     const allowed = new Set(
       [
-        base,
-        frontendOrigin,
+        toOrigin(base),
+        toOrigin(frontendOrigin),
         'https://obaol.com',
         'https://www.obaol.com',
         'http://localhost:3000',
