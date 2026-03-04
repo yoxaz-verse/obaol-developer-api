@@ -53,6 +53,10 @@ app.use(
 );
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('combined'));
+
+// MCP server mounted early to bypass global rate limiting
+app.use('/mcp', mcpServer);
+
 app.use(baselineLimiter);
 
 // Stateless auth - no sessions for API persistence

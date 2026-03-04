@@ -71,6 +71,8 @@ router.get('/', async (req, res) => {
   try {
     // Prevent proxy buffering (like Nginx) which breaks SSE.
     res.setHeader('X-Accel-Buffering', 'no');
+    // Ensure headers are sent immediately to open the proxy pipe.
+    res.flushHeaders();
     const { SSEServerTransport } = await loadSdk();
     const transport = new SSEServerTransport('/mcp', res);
     const server = await buildSessionServer(req.apiKey || null);
@@ -133,3 +135,8 @@ router.post('/', async (req, res) => {
 });
 
 module.exports = router;
+
+// Eagerly pre-load the SDK and type schemas to minimize first-request latency.
+loadSdk().catch((err) => {
+  console.error('Failed to pre-load MCP SDK:', err);
+});
