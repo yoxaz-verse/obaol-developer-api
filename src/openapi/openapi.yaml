@@ -1,0 +1,318 @@
+openapi: 3.1.0
+info:
+  title: OBAOL Developer API
+  version: "1.0"
+  description: API for accessing OBAOL commodity data, traders, and trade automation tools.
+servers:
+  - url: https://api.obaol.com
+security:
+  - ApiKeyAuth: []
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Returns service health status.
+      security: []
+      responses:
+        "200":
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                required:
+                  - status
+  /v1/prices:
+    get:
+      summary: Get prices
+      description: Returns commodity prices with public commission fields.
+      parameters:
+        - in: query
+          name: commodity
+          required: false
+          schema:
+            type: string
+          description: Optional commodity filter (case-insensitive exact match).
+      responses:
+        "200":
+          description: Price list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PricesResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /v1/traders:
+    get:
+      summary: Get traders
+      description: Returns traders, optionally filtered by verification status.
+      parameters:
+        - in: query
+          name: verified
+          required: false
+          schema:
+            type: boolean
+          description: Filter traders by verification status.
+      responses:
+        "200":
+          description: Trader list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradersResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /v1/inquiries:
+    post:
+      summary: Create inquiry
+      description: Creates a new inquiry for trade automation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InquiryCreateRequest"
+      responses:
+        "201":
+          description: Inquiry created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InquiryCreateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /v1/calculate/cif:
+    post:
+      summary: Calculate CFR and CIF
+      description: Calculates CFR and CIF from FOB, freight, and insurance inputs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CifRequest"
+      responses:
+        "200":
+          description: CIF calculation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CifResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: Use `Authorization: Bearer <API_KEY>`.
+  responses:
+    BadRequest:
+      description: Invalid request payload.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing or invalid API key.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Permission denied for this API key.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    Price:
+      type: object
+      properties:
+        commodity:
+          type: string
+        value:
+          type: number
+        currency:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+        publicValue:
+          type: number
+        commissionPct:
+          type: number
+      required:
+        - commodity
+        - value
+        - currency
+        - publicValue
+        - commissionPct
+    Trader:
+      type: object
+      properties:
+        name:
+          type: string
+        verified:
+          type: boolean
+        contact:
+          type: string
+        location:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - name
+        - verified
+        - contact
+        - location
+    Inquiry:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        commodity:
+          type: string
+        reqFields:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - email
+        - commodity
+        - reqFields
+    InquiryCreateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+        commodity:
+          type: string
+        reqFields:
+          type: object
+          additionalProperties: true
+      required:
+        - email
+        - commodity
+        - reqFields
+    CifRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        fob:
+          type: number
+        freight:
+          type: number
+        insurance:
+          type: number
+        insuranceRatePct:
+          type: number
+      required:
+        - fob
+        - freight
+      description: Provide either `insurance` or `insuranceRatePct` (if omitted, default rate is 1%).
+    CifResult:
+      type: object
+      properties:
+        cfr:
+          type: number
+        cif:
+          type: number
+        breakdown:
+          type: object
+          properties:
+            fob:
+              type: number
+            freight:
+              type: number
+            insurance:
+              type: number
+            insuranceMethod:
+              type: string
+            insuranceRatePct:
+              type:
+                - number
+                - "null"
+      required:
+        - cfr
+        - cif
+        - breakdown
+    PricesResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Price"
+      required:
+        - success
+        - data
+    TradersResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Trader"
+      required:
+        - success
+        - data
+    InquiryCreateResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/Inquiry"
+      required:
+        - success
+        - data
+    CifResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/CifResult"
+      required:
+        - success
+        - data
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+      required:
+        - success
+        - message

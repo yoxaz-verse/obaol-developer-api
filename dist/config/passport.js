@@ -11,14 +11,15 @@ const { findOrCreateDeveloper } = require('../services/developerAuth.service');
 function configurePassport() {
     const clientID = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-    const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+    const rawBaseUrl = process.env.BASE_URL || 'http://localhost:3000';
+    const normalizedBaseUrl = rawBaseUrl.replace(/\/+$/, '');
     if (!clientID || !clientSecret) {
         throw new Error('GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET must be configured.');
     }
     passport.use(new GoogleStrategy({
         clientID,
         clientSecret,
-        callbackURL: `${baseUrl}/api/developer/auth/google/callback`
+        callbackURL: `${normalizedBaseUrl}/api/developer/auth/google/callback`
     }, async (_accessToken, _refreshToken, profile, done) => {
         try {
             const email = profile?.emails?.[0]?.value;

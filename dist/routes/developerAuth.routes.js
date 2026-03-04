@@ -40,7 +40,23 @@ function isAllowedRedirectUri(redirectUri) {
     try {
         const url = new URL(redirectUri);
         const base = process.env.BASE_URL || '';
-        const allowed = new Set([base, 'http://localhost:3000', 'http://127.0.0.1:3000'].filter(Boolean));
+        const frontendOrigin = process.env.FRONTEND_ORIGIN || '';
+        const toOrigin = (value) => {
+            try {
+                return new URL(String(value).trim()).origin;
+            }
+            catch (_error) {
+                return '';
+            }
+        };
+        const allowed = new Set([
+            toOrigin(base),
+            toOrigin(frontendOrigin),
+            'https://obaol.com',
+            'https://www.obaol.com',
+            'http://localhost:3000',
+            'http://127.0.0.1:3000'
+        ].filter(Boolean));
         return Array.from(allowed).some((origin) => url.origin === origin);
     }
     catch (_error) {
@@ -77,6 +93,11 @@ router.get('/google/callback', (req, res, next) => {
             const token = issueDeveloperJwt(developer);
             const state = parseState(String(req.query.state || ''));
             const redirectUri = String(state.redirectUri || '').trim();
+            const fallbackOrigin = String(process.env.FRONTEND_ORIGIN || '').trim().replace(/\/+$/, '');
+            const fallbackRedirectUri = fallbackOrigin ? `${fallbackOrigin}/developer/login` : '';
+            const finalRedirectUri = redirectUri && isAllowedRedirectUri(redirectUri)
+                ? redirectUri
+                : (fallbackRedirectUri && isAllowedRedirectUri(fallbackRedirectUri) ? fallbackRedirectUri : '');
             const finalizeJson = () => res.json({
                 success: true,
                 token,
@@ -90,8 +111,8 @@ router.get('/google/callback', (req, res, next) => {
                 if (req.session) {
                     req.session.destroy(() => {
                         res.clearCookie('connect.sid');
-                        if (redirectUri && isAllowedRedirectUri(redirectUri)) {
-                            const destination = new URL(redirectUri);
+                        if (finalRedirectUri) {
+                            const destination = new URL(finalRedirectUri);
                             destination.searchParams.set('token', token);
                             destination.searchParams.set('email', String(developer.email || ''));
                             destination.searchParams.set('name', String(developer.name || ''));
@@ -101,8 +122,8 @@ router.get('/google/callback', (req, res, next) => {
                     });
                     return;
                 }
-                if (redirectUri && isAllowedRedirectUri(redirectUri)) {
-                    const destination = new URL(redirectUri);
+                if (finalRedirectUri) {
+                    const destination = new URL(finalRedirectUri);
                     destination.searchParams.set('token', token);
                     destination.searchParams.set('email', String(developer.email || ''));
                     destination.searchParams.set('name', String(developer.name || ''));
