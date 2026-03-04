@@ -23,3 +23,20 @@ All `/v1/*` business endpoints require API key authentication using:
 - `POST /v1/inquiries`
 - `POST /v1/calculate/cif`
 - `GET /health` (public)
+
+## ChatGPT App Integration
+
+The OBAOL Developer API also exposes an MCP endpoint for agent/tool integrations.
+
+- MCP endpoint: [https://api.obaol.com/mcp](https://api.obaol.com/mcp)
+- Transport:
+  - `GET /mcp` for SSE stream
+  - `POST /mcp?sessionId=...` for MCP JSON-RPC messages
+- Authentication: `Authorization: Bearer <API_KEY>`
+
+### MCP tools
+
+- `get_prices` -> fetch commodity prices
+- `get_traders` -> fetch traders with optional `verified` filter
+- `create_inquiry` -> create inquiry using `{ commodity, quantity, buyer }` where `buyer` is buyer email
+- `calculate_cif` -> compute CIF from `{ fob, freight, insurance? }`

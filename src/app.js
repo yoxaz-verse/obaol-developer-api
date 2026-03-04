@@ -12,7 +12,7 @@ const session = require('express-session');
 const passport = require('passport');
 const v1Routes = require('./routes/v1');
 const developerAuthRoutes = require('./routes/developerAuth.routes');
-const mcpRoutes = require('./routes/mcp');
+const mcpServer = require('./mcp/server');
 const { baselineLimiter } = require('./middleware/rateLimiter');
 const { configurePassport } = require('./config/passport');
 
@@ -29,16 +29,20 @@ const ENV_ALLOWED_ORIGINS = String(process.env.CORS_ALLOWED_ORIGINS || '')
   .map((x) => x.trim())
   .filter(Boolean);
 
-const ALLOWED_ORIGINS = new Set([...CHATGPT_ALLOWED_ORIGINS, ...ENV_ALLOWED_ORIGINS]);
+const ALLOWED_ORIGINS = new Set([
+  'https://chat.openai.com',
+  'https://chatgpt.com',
+  'https://obaol.com',
+  'https://developers.obaol.com',
+  'http://localhost:3000',
+  ...ENV_ALLOWED_ORIGINS
+]);
 
 app.use(helmet());
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin) {
-        return callback(null, true);
-      }
-      if (ALLOWED_ORIGINS.has(origin)) {
+      if (!origin || ALLOWED_ORIGINS.has(origin)) {
         return callback(null, true);
       }
       return callback(new Error('CORS origin not allowed.'));
@@ -50,34 +54,28 @@ app.use(
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('combined'));
 app.use(baselineLimiter);
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET || process.env.JWT_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 10 * 60 * 1000
-    }
-  })
-);
+
+// Stateless auth - no sessions for API persistence
 app.use(passport.initialize());
-app.use(passport.session());
 
 /**
  * Health endpoint.
  */
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok' });
+  res.json({
+    status: 'ok',
+    service: 'obaol-developer-api',
+    version: '1.0',
+    mcp: '/mcp'
+  });
 });
 
 app.get('/api/info', (_req, res) => {
   res.json({
     name: 'OBAOL Developer API',
     version: '1.0',
-    description: 'API for accessing OBAOL commodity data, traders, and trade automation tools'
+    description: 'API for accessing OBAOL commodity data, traders, and trade automation tools',
+    mcp: 'https://api.obaol.com/mcp'
   });
 });
 
@@ -87,6 +85,7 @@ app.get('/docs', (_req, res) => {
     version: '1.0',
     baseUrl: 'https://api.obaol.com',
     openapi: 'https://api.obaol.com/openapi.yaml',
+    mcp: 'https://api.obaol.com/mcp',
     authentication: {
       type: 'apiKey',
       header: 'Authorization',
@@ -94,6 +93,7 @@ app.get('/docs', (_req, res) => {
     },
     endpoints: [
       { method: 'GET', path: '/health', description: 'Health check endpoint' },
+      { method: 'GET', path: '/mcp', description: 'MCP server endpoint' },
       { method: 'GET', path: '/v1/prices', description: 'Fetch prices by optional commodity filter' },
       { method: 'GET', path: '/v1/traders', description: 'Fetch traders by optional verified filter' },
       { method: 'POST', path: '/v1/inquiries', description: 'Create a new inquiry' },
@@ -107,7 +107,7 @@ app.get('/openapi.yaml', (_req, res) => {
     path.join(process.cwd(), 'src', 'openapi', 'openapi.yaml'),
     path.join(process.cwd(), 'dist', 'openapi', 'openapi.yaml'),
     path.join(__dirname, 'openapi', 'openapi.yaml'),
-    path.join(__dirname, '..', 'src', 'openapi', 'openapi.yaml')
+    path.join(__dirname, '..', 'openapi', 'openapi.yaml')
   ];
 
   const filePath = candidatePaths.find((p) => fs.existsSync(p));
@@ -119,9 +119,11 @@ app.get('/openapi.yaml', (_req, res) => {
   return res.sendFile(filePath);
 });
 
+// Mount /mcp before 404 handler
+app.use('/mcp', mcpServer);
+
 app.use('/api/developer/auth', developerAuthRoutes);
 app.use('/v1', v1Routes);
-app.use('/mcp', mcpRoutes);
 
 app.use((_req, res) => {
   res.status(404).json({ success: false, message: 'Route not found.' });

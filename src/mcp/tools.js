@@ -48,16 +48,7 @@ const TOOL_DEFINITIONS = [
       properties: {
         commodity: { type: 'string' },
         quantity: { type: 'number' },
-        buyer: {
-          type: 'object',
-          properties: {
-            email: { type: 'string' },
-            name: { type: 'string' },
-            phone: { type: 'string' }
-          },
-          required: ['email'],
-          additionalProperties: true
-        }
+        buyer: { type: 'string', description: 'Buyer email address.' }
       },
       required: ['commodity', 'quantity', 'buyer'],
       additionalProperties: false
@@ -80,8 +71,8 @@ const TOOL_DEFINITIONS = [
   }
 ];
 
-function hasPermission(req, permission) {
-  const permissions = req.apiKey?.permissions || [];
+function hasPermission(apiKey, permission) {
+  const permissions = apiKey?.permissions || [];
   return permissions.includes('*') || permissions.includes(permission);
 }
 
@@ -91,33 +82,32 @@ function deny(permission) {
   throw err;
 }
 
-async function executeTool(name, args, req) {
+async function executeTool(name, args, apiKey) {
   switch (name) {
     case 'get_prices': {
-      if (!hasPermission(req, 'prices:read')) deny('prices:read');
+      if (!hasPermission(apiKey, 'prices:read')) deny('prices:read');
       return getPrices({ commodity: args?.commodity });
     }
 
     case 'get_traders': {
-      if (!hasPermission(req, 'traders:read')) deny('traders:read');
+      if (!hasPermission(apiKey, 'traders:read')) deny('traders:read');
       return getTraders({ verified: args?.verified });
     }
 
     case 'create_inquiry': {
-      if (!hasPermission(req, 'inquiries:create')) deny('inquiries:create');
-      const buyer = args?.buyer || {};
+      if (!hasPermission(apiKey, 'inquiries:create')) deny('inquiries:create');
       return createInquiry({
-        email: buyer.email,
+        email: args?.buyer,
         commodity: args?.commodity,
         reqFields: {
           quantity: args?.quantity,
-          buyer
+          buyer: args?.buyer
         }
       });
     }
 
     case 'calculate_cif': {
-      if (!hasPermission(req, 'calculator:use')) deny('calculator:use');
+      if (!hasPermission(apiKey, 'calculator:use')) deny('calculator:use');
       return calculateCif({
         fob: args?.fob,
         freight: args?.freight,

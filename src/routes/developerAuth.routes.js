@@ -72,7 +72,7 @@ function isAllowedRedirectUri(redirectUri) {
  */
 router.get('/google', passport.authenticate('google', {
   scope: ['profile', 'email'],
-  session: true
+  session: false
 }));
 
 router.get('/google/start', (req, res, next) => {
@@ -80,7 +80,7 @@ router.get('/google/start', (req, res, next) => {
   const state = encodeState({
     redirectUri: isAllowedRedirectUri(redirectUri) ? redirectUri : undefined
   });
-  return passport.authenticate('google', { scope: ['profile', 'email'], session: true, state })(req, res, next);
+  return passport.authenticate('google', { scope: ['profile', 'email'], session: false, state })(req, res, next);
 });
 
 /**
@@ -88,7 +88,7 @@ router.get('/google/start', (req, res, next) => {
  * Handles Google OAuth callback and issues JWT.
  */
 router.get('/google/callback', (req, res, next) => {
-  passport.authenticate('google', { session: true }, async (err, developer) => {
+  passport.authenticate('google', { session: false }, async (err, developer) => {
     try {
       if (err) return next(err);
       if (!developer) {
