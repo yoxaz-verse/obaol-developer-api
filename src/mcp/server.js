@@ -69,6 +69,8 @@ async function buildSessionServer(apiKey) {
  */
 router.get('/', async (req, res) => {
   try {
+    // Prevent proxy buffering (like Nginx) which breaks SSE.
+    res.setHeader('X-Accel-Buffering', 'no');
     const { SSEServerTransport } = await loadSdk();
     const transport = new SSEServerTransport('/mcp', res);
     const server = await buildSessionServer(req.apiKey || null);
