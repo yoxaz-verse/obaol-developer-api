@@ -69,18 +69,6 @@ async function buildSessionServer(apiKey) {
  */
 router.get('/', async (req, res) => {
   try {
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.write(`event: ready\n`);
-    res.write(
-      `data: ${JSON.stringify({
-        protocol: 'mcp',
-        transport: 'sse',
-        endpoint: '/mcp',
-        tools: TOOL_DEFINITIONS.map((tool) => tool.name)
-      })}\n\n`
-    );
     const { SSEServerTransport } = await loadSdk();
     const transport = new SSEServerTransport('/mcp', res);
     const server = await buildSessionServer(req.apiKey || null);
