@@ -3,7 +3,6 @@
  */
 
 const express = require('express');
-const { apiKeyAuth } = require('../middleware/apiKeyAuth');
 const { TOOL_DEFINITIONS, executeTool } = require('./tools');
 
 const router = express.Router();
@@ -68,7 +67,7 @@ async function buildSessionServer(apiKey) {
  * GET /mcp
  * Opens the MCP SSE transport stream for a new session.
  */
-router.get('/', apiKeyAuth, async (req, res) => {
+router.get('/', async (req, res) => {
   try {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -84,7 +83,7 @@ router.get('/', apiKeyAuth, async (req, res) => {
     );
     const { SSEServerTransport } = await loadSdk();
     const transport = new SSEServerTransport('/mcp', res);
-    const server = await buildSessionServer(req.apiKey);
+    const server = await buildSessionServer(req.apiKey || null);
 
     sessions.set(transport.sessionId, {
       server,
@@ -110,7 +109,7 @@ router.get('/', apiKeyAuth, async (req, res) => {
  * POST /mcp
  * Receives MCP JSON-RPC messages for an existing SSE session.
  */
-router.post('/', apiKeyAuth, async (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const sessionId = String(req.query.sessionId || '');
     if (!sessionId) {
