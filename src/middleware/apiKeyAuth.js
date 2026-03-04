@@ -35,14 +35,16 @@ function safeCompare(a, b) {
 async function apiKeyAuth(req, res, next) {
   try {
     const auth = req.headers.authorization || '';
+    let rawToken = '';
 
-    if (!auth.startsWith('Bearer ')) {
-      return res.status(401).json({ success: false, message: 'Missing or invalid Authorization header.' });
+    if (auth.startsWith('Bearer ')) {
+      rawToken = auth.slice(7).trim();
+    } else if (req.query.apiKey || req.query.token) {
+      rawToken = String(req.query.apiKey || req.query.token).trim();
     }
 
-    const rawToken = auth.slice(7).trim();
     if (!rawToken) {
-      return res.status(401).json({ success: false, message: 'API key token is required.' });
+      return res.status(401).json({ success: false, message: 'Missing or invalid Authorization header or apiKey parameter.' });
     }
 
     const derivedHash = deriveTokenHash(rawToken);

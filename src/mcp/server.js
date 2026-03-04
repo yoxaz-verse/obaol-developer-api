@@ -114,6 +114,8 @@ router.use(apiKeyAuth);
 router.get('/', async (req, res) => {
   try {
     const apiKey = req.apiKey;
+    const authType = req.headers.authorization ? 'header' : 'query';
+    console.log(`[MCP] New SSE session: auth=${authType}, key=${apiKey?.name || 'unknown'}`);
 
     res.setHeader('X-Accel-Buffering', 'no');
     res.setHeader('Cache-Control', 'no-cache');
