@@ -4,6 +4,7 @@
 
 const express = require('express');
 const { TOOL_DEFINITIONS, executeTool } = require('./tools');
+const { apiKeyAuth } = require('../middleware/apiKeyAuth');
 
 const router = express.Router();
 const sessions = new Map();
@@ -63,18 +64,56 @@ async function buildSessionServer(apiKey) {
   return mcpServer;
 }
 
+function jsonRpcError(res, id, code, message, status = 400) {
+  return res.status(status).json({
+    jsonrpc: '2.0',
+    id: id ?? null,
+    error: {
+      code,
+      message
+    }
+  });
+}
+
+router.get('/health', (_req, res) => {
+  return res.json({
+    success: true,
+    status: 'ok',
+    transport: 'sse+post',
+    endpoint: '/mcp'
+  });
+});
+
+router.get('/info', (_req, res) => {
+  return res.json({
+    success: true,
+    name: 'obaol-mcp-server',
+    version: '1.0.0',
+    auth: {
+      required: true,
+      header: 'Authorization',
+      format: 'Bearer <API_KEY>'
+    },
+    transport: {
+      connect: 'GET /mcp',
+      messages: 'POST /mcp?sessionId=<id>'
+    },
+    tools: TOOL_DEFINITIONS.map((tool) => ({
+      name: tool.name,
+      description: tool.description
+    }))
+  });
+});
+
+router.use(apiKeyAuth);
+
 /**
  * GET /mcp
  * Opens the MCP SSE transport stream for a new session.
  */
 router.get('/', async (req, res) => {
   try {
-    const authHeader = req.headers.authorization || '';
-    let apiKey = null;
-
-    if (authHeader.startsWith('Bearer ')) {
-      apiKey = { key: authHeader.replace('Bearer ', '').trim() };
-    }
+    const apiKey = req.apiKey;
 
     res.setHeader('X-Accel-Buffering', 'no');
     res.setHeader('Cache-Control', 'no-cache');
@@ -90,7 +129,8 @@ router.get('/', async (req, res) => {
     sessions.set(transport.sessionId, {
       server,
       transport,
-      apiKeyId: apiKey?.id || null
+      apiKeyId: apiKey?.id || null,
+      apiKey
     });
 
     req.on('close', () => {
@@ -113,51 +153,45 @@ router.get('/', async (req, res) => {
  */
 router.post('/', async (req, res) => {
   try {
+    const requestId = req.body?.id ?? null;
     const sessionId = String(req.query.sessionId || '');
     if (!sessionId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing sessionId query parameter.'
-      });
+      return jsonRpcError(
+        res,
+        requestId,
+        -32602,
+        'Missing sessionId query parameter.',
+        400
+      );
     }
 
     const session = sessions.get(sessionId);
     if (!session) {
-      return res.status(404).json({
-        success: false,
-        message: 'MCP session not found or expired.'
-      });
+      return jsonRpcError(
+        res,
+        requestId,
+        -32001,
+        'MCP session not found or expired.',
+        404
+      );
     }
 
-    // Optional API key parsing for ownership verification
-    const authHeader = req.headers.authorization || '';
-    let currentApiKeyId = null;
-    if (authHeader.startsWith('Bearer ')) {
-      // In a real scenario, we would verify the hash here, but for session continuity 
-      // check we can just use the provided key ID if we trust the session store.
-      // However, for simplicity and protocol compliance, we only enforce if session has an owner.
-      // For now, if the session has an owner, we expect the same key or we can skip strictness 
-      // if the user specifically asked for "No Authentication" discovery.
-    }
-
-    if (session.apiKeyId && (!req.apiKey || req.apiKey.id !== session.apiKeyId)) {
-      // If we don't have req.apiKey from middleware, this check will fail if session has owner.
-      // But since we want "No Authentication", we should perhaps allow it or parse the key.
-      // The user's prompt specifically asked for this check:
-      /*
-      if (session.apiKeyId && req.apiKey?.id !== session.apiKeyId) {
-        return res.status(403).json({ ... });
-      }
-      */
-      // To make this work without the middleware, we'd need to re-run auth or skip.
-      // Given the "No Authentication" goal, we'll relax this if requested.
+    if (!req.apiKey || req.apiKey.id !== session.apiKeyId) {
+      return jsonRpcError(
+        res,
+        requestId,
+        -32003,
+        'Session/API key mismatch.',
+        403
+      );
     }
 
     await session.transport.handlePostMessage(req, res);
     return null;
   } catch (error) {
+    const requestId = req.body?.id ?? null;
     const message = error?.message || 'Failed to process MCP message.';
-    return res.status(500).json({ success: false, message });
+    return jsonRpcError(res, requestId, -32603, message, 500);
   }
 });
 

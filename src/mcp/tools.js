@@ -72,8 +72,7 @@ const TOOL_DEFINITIONS = [
 ];
 
 function hasPermission(apiKey, permission) {
-  // If no API key is provided, we assume it's a public/anonymous session allowed to see tools.
-  if (!apiKey) return true;
+  if (!apiKey) return false;
   const permissions = apiKey?.permissions || [];
   return permissions.includes('*') || permissions.includes(permission);
 }

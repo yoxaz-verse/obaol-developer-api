@@ -29,10 +29,26 @@ All `/v1/*` business endpoints require API key authentication using:
 The OBAOL Developer API also exposes an MCP endpoint for agent/tool integrations.
 
 - MCP endpoint: [https://api.obaol.com/mcp](https://api.obaol.com/mcp)
+- MCP info: [https://api.obaol.com/mcp/info](https://api.obaol.com/mcp/info)
+- MCP health: [https://api.obaol.com/mcp/health](https://api.obaol.com/mcp/health)
 - Transport:
   - `GET /mcp` for SSE stream
   - `POST /mcp?sessionId=...` for MCP JSON-RPC messages
 - Authentication: `Authorization: Bearer <API_KEY>`
+
+### Why `/mcp` looks like a blank page
+
+`/mcp` is an SSE stream endpoint, not an HTML page. Opening it directly in a browser tab can appear blank while the stream stays open.  
+For human verification, use `/mcp/info` and `/mcp/health`.
+
+### ChatGPT App connector setup
+
+Use these settings in ChatGPT Apps:
+
+1. MCP Server URL: `https://api.obaol.com/mcp`
+2. Authentication: API key header
+3. Header value format: `Authorization: Bearer <API_KEY>`
+4. Do not use `No Auth` in production.
 
 ### MCP tools
 

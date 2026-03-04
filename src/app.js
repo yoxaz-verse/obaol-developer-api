@@ -8,7 +8,6 @@ const cors = require('cors');
 const morgan = require('morgan');
 const fs = require('fs');
 const path = require('path');
-const session = require('express-session');
 const passport = require('passport');
 const v1Routes = require('./routes/v1');
 const developerAuthRoutes = require('./routes/developerAuth.routes');
@@ -18,11 +17,6 @@ const { configurePassport } = require('./config/passport');
 
 const app = express();
 configurePassport();
-
-const CHATGPT_ALLOWED_ORIGINS = [
-  'https://chat.openai.com',
-  'https://chatgpt.com'
-];
 
 const ENV_ALLOWED_ORIGINS = String(process.env.CORS_ALLOWED_ORIGINS || '')
   .split(',')
@@ -102,7 +96,10 @@ app.get('/docs', (_req, res) => {
     },
     endpoints: [
       { method: 'GET', path: '/health', description: 'Health check endpoint' },
-      { method: 'GET', path: '/mcp', description: 'MCP server endpoint' },
+      { method: 'GET', path: '/mcp/health', description: 'MCP health endpoint (JSON)' },
+      { method: 'GET', path: '/mcp/info', description: 'MCP metadata and tools (JSON)' },
+      { method: 'GET', path: '/mcp', description: 'MCP SSE stream endpoint (requires API key)' },
+      { method: 'POST', path: '/mcp?sessionId=...', description: 'MCP JSON-RPC transport endpoint (requires API key)' },
       { method: 'GET', path: '/v1/prices', description: 'Fetch prices by optional commodity filter' },
       { method: 'GET', path: '/v1/traders', description: 'Fetch traders by optional verified filter' },
       { method: 'POST', path: '/v1/inquiries', description: 'Create a new inquiry' },
