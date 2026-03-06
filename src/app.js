@@ -51,11 +51,13 @@ app.use(
     allowedHeaders: ['Content-Type', 'Authorization']
   })
 );
-app.use(express.json({ limit: '1mb' }));
-app.use(morgan('combined'));
 
 // MCP server mounted early to bypass global rate limiting
+// and before express.json so SSE POST body stream remains SDK-compatible.
 app.use('/mcp', mcpServer);
+
+app.use(express.json({ limit: '1mb' }));
+app.use(morgan('combined'));
 
 app.use(baselineLimiter);
 

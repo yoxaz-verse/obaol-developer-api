@@ -44,10 +44,11 @@ app.use(cors({
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
+// MCP server mounted early to bypass global rate limiting
+// and before express.json so SSE POST body stream remains SDK-compatible.
+app.use('/mcp', mcpServer);
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('combined'));
-// MCP server mounted early to bypass global rate limiting
-app.use('/mcp', mcpServer);
 app.use(baselineLimiter);
 // Stateless auth - no sessions for API persistence
 app.use(passport.initialize());
