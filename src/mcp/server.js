@@ -254,7 +254,9 @@ router.post('/', apiKeyAuth, async (req, res) => {
       );
     }
 
-    await session.transport.handlePostMessage(req, res);
+    // Express JSON middleware has already consumed the request stream.
+    // Pass parsed body so SDK doesn't attempt to read the stream again.
+    await session.transport.handlePostMessage(req, res, req.body);
     return null;
   } catch (error) {
     const requestId = req.body?.id ?? null;

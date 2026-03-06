@@ -203,7 +203,9 @@ router.post('/', apiKeyAuth, async (req, res) => {
             console.warn(`[MCP] Session/API key mismatch: sessionId=${sessionId} expected=${String(session.apiKeyId).slice(0, 8)} got=${String(req.apiKey.id || '').slice(0, 8)}`);
             return jsonRpcError(res, requestId, -32003, 'Session/API key mismatch.', 403);
         }
-        await session.transport.handlePostMessage(req, res);
+        // Express JSON middleware has already consumed the request stream.
+        // Pass parsed body so SDK doesn't attempt to read the stream again.
+        await session.transport.handlePostMessage(req, res, req.body);
         return null;
     }
     catch (error) {
