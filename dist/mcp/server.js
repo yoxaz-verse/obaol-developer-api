@@ -119,12 +119,6 @@ router.get('/', async (req, res) => {
         else if (rawConnectorToken) {
             endpointWithAuth = `/mcp?connectorToken=${encodeURIComponent(String(rawConnectorToken))}`;
         }
-        res.setHeader('X-Accel-Buffering', 'no');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Connection', 'keep-alive');
-        // Ensure headers are sent immediately to open the proxy pipe.
-        res.flushHeaders();
         const { SSEServerTransport } = await loadSdk();
         const transport = new SSEServerTransport(endpointWithAuth, res);
         const session = {
