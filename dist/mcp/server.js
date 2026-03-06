@@ -209,6 +209,13 @@ router.post('/', apiKeyAuth, async (req, res) => {
     catch (error) {
         const requestId = req.body?.id ?? null;
         const message = error?.message || 'Failed to process MCP message.';
+        if (res.headersSent) {
+            console.warn(`[MCP] POST response already sent for session=${String(req.query.sessionId || '')}. Error=${message}`);
+            return null;
+        }
+        if (message === 'SSE connection not established') {
+            return jsonRpcError(res, requestId, -32002, 'SSE stream is not active for this session. Reconnect GET /mcp and keep stream open while sending POST messages.', 409);
+        }
         return jsonRpcError(res, requestId, -32603, message, 500);
     }
 });
