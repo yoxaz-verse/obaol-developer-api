@@ -7,6 +7,7 @@ const { TOOL_DEFINITIONS, executeTool } = require('./tools');
 const { apiKeyAuth } = require('../middleware/apiKeyAuth');
 const router = express.Router();
 const sessions = new Map();
+const SESSION_GRACE_MS = Number(process.env.MCP_SESSION_GRACE_MS || 300000);
 let sdkPromise;
 async function loadSdk() {
     if (!sdkPromise) {
@@ -69,6 +70,17 @@ function jsonRpcError(res, id, code, message, status = 400) {
         }
     });
 }
+function scheduleSessionCleanup(sessionId, reason) {
+    const session = sessions.get(sessionId);
+    if (!session)
+        return;
+    if (session.cleanupTimer)
+        return;
+    session.cleanupTimer = setTimeout(() => {
+        sessions.delete(sessionId);
+        console.log(`[MCP] Session expired: sessionId=${sessionId} reason=${reason} graceMs=${SESSION_GRACE_MS}`);
+    }, SESSION_GRACE_MS);
+}
 router.get('/health', (_req, res) => {
     return res.json({
         success: true,
@@ -125,7 +137,8 @@ router.get('/', async (req, res) => {
             server: null,
             transport,
             apiKeyId: null,
-            apiKey: null
+            apiKey: null,
+            cleanupTimer: null
         };
         const server = await buildSessionServer(() => session.apiKey);
         session.server = server;
@@ -134,10 +147,10 @@ router.get('/', async (req, res) => {
         const userAgent = String(req.headers['user-agent'] || '').slice(0, 120);
         console.log(`[MCP] SSE session created: sessionId=${transport.sessionId} hasApiKeyOnGet=${Boolean(rawApiKey)} hasConnectorOnGet=${Boolean(rawConnectorToken)} key=${maskKeyForLog(rawApiKey || rawConnectorToken)} origin=${origin} ua="${userAgent}"`);
         req.on('close', () => {
-            sessions.delete(transport.sessionId);
+            scheduleSessionCleanup(transport.sessionId, 'request-close');
         });
         res.on('close', () => {
-            sessions.delete(transport.sessionId);
+            scheduleSessionCleanup(transport.sessionId, 'response-close');
         });
         await server.connect(transport);
     }
@@ -171,7 +184,11 @@ router.post('/', apiKeyAuth, async (req, res) => {
         }
         const session = sessions.get(sessionId);
         if (!session) {
-            return jsonRpcError(res, requestId, -32001, 'MCP session not found or expired.', 404);
+            return jsonRpcError(res, requestId, -32001, 'MCP session not found or expired. Reconnect GET /mcp and retry POST on same server instance.', 404);
+        }
+        if (session.cleanupTimer) {
+            clearTimeout(session.cleanupTimer);
+            session.cleanupTimer = null;
         }
         if (!req.apiKey) {
             return jsonRpcError(res, requestId, -32003, 'Missing API key for MCP message.', 401);
