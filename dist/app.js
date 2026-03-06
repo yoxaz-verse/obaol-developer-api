@@ -8,30 +8,34 @@ const cors = require('cors');
 const morgan = require('morgan');
 const fs = require('fs');
 const path = require('path');
-const session = require('express-session');
 const passport = require('passport');
 const v1Routes = require('./routes/v1');
 const developerAuthRoutes = require('./routes/developerAuth.routes');
+const mcpServer = require('./mcp/server');
 const { baselineLimiter } = require('./middleware/rateLimiter');
 const { configurePassport } = require('./config/passport');
 const app = express();
 configurePassport();
-const CHATGPT_ALLOWED_ORIGINS = [
-    'https://chat.openai.com',
-    'https://chatgpt.com'
-];
 const ENV_ALLOWED_ORIGINS = String(process.env.CORS_ALLOWED_ORIGINS || '')
     .split(',')
     .map((x) => x.trim())
     .filter(Boolean);
-const ALLOWED_ORIGINS = new Set([...CHATGPT_ALLOWED_ORIGINS, ...ENV_ALLOWED_ORIGINS]);
+const ALLOWED_ORIGINS = new Set([
+    'https://chat.openai.com',
+    'https://chatgpt.com',
+    'https://obaol.com',
+    'https://developers.obaol.com',
+    'http://localhost:3000',
+    ...ENV_ALLOWED_ORIGINS
+]);
+app.use((req, res, next) => {
+    res.setHeader('X-Accel-Buffering', 'no');
+    next();
+});
 app.use(helmet());
 app.use(cors({
     origin(origin, callback) {
-        if (!origin) {
-            return callback(null, true);
-        }
-        if (ALLOWED_ORIGINS.has(origin)) {
+        if (!origin || ALLOWED_ORIGINS.has(origin)) {
             return callback(null, true);
         }
         return callback(new Error('CORS origin not allowed.'));
@@ -41,31 +45,28 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('combined'));
+// MCP server mounted early to bypass global rate limiting
+app.use('/mcp', mcpServer);
 app.use(baselineLimiter);
-app.use(session({
-    secret: process.env.SESSION_SECRET || process.env.JWT_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 10 * 60 * 1000
-    }
-}));
+// Stateless auth - no sessions for API persistence
 app.use(passport.initialize());
-app.use(passport.session());
 /**
  * Health endpoint.
  */
 app.get('/health', (_req, res) => {
-    res.json({ status: 'ok' });
+    res.json({
+        status: 'ok',
+        service: 'obaol-developer-api',
+        version: '1.0',
+        mcp: '/mcp'
+    });
 });
 app.get('/api/info', (_req, res) => {
     res.json({
         name: 'OBAOL Developer API',
         version: '1.0',
-        description: 'API for accessing OBAOL commodity data, traders, and trade automation tools'
+        description: 'API for accessing OBAOL commodity data, traders, and trade automation tools',
+        mcp: 'https://api.obaol.com/mcp'
     });
 });
 app.get('/docs', (_req, res) => {
@@ -74,13 +75,24 @@ app.get('/docs', (_req, res) => {
         version: '1.0',
         baseUrl: 'https://api.obaol.com',
         openapi: 'https://api.obaol.com/openapi.yaml',
+        mcp: 'https://api.obaol.com/mcp',
         authentication: {
-            type: 'apiKey',
+            type: 'mixed',
+            connect: 'No Auth (GET /mcp)',
+            messages: 'API key required on POST /mcp',
             header: 'Authorization',
-            format: 'Bearer <API_KEY>'
+            query: 'apiKey or connectorToken',
+            format: 'Bearer <API_KEY|CONNECTOR_TOKEN> or ?apiKey=<API_KEY> or ?connectorToken=<MCP_CONNECTOR_TOKEN>',
+            recommendedForChatGPT: 'Use connectorToken URL in No Auth connector mode.'
         },
         endpoints: [
             { method: 'GET', path: '/health', description: 'Health check endpoint' },
+            { method: 'GET', path: '/mcp/health', description: 'MCP health endpoint (JSON)' },
+            { method: 'GET', path: '/mcp/info', description: 'MCP metadata and tools (JSON)' },
+            { method: 'GET', path: '/mcp', description: 'MCP SSE stream endpoint (No Auth connect; optionally include ?apiKey=... or ?connectorToken=...)' },
+            { method: 'POST', path: '/mcp?sessionId=...&apiKey=...|connectorToken=...', description: 'MCP JSON-RPC transport endpoint (auth required)' },
+            { method: 'GET', path: '/v1/dev-mcp/connectors', description: 'Developer connector tokens list (developer auth required)' },
+            { method: 'POST', path: '/v1/dev-mcp/connectors', description: 'Create MCP connector token (developer auth required)' },
             { method: 'GET', path: '/v1/prices', description: 'Fetch prices by optional commodity filter' },
             { method: 'GET', path: '/v1/traders', description: 'Fetch traders by optional verified filter' },
             { method: 'POST', path: '/v1/inquiries', description: 'Create a new inquiry' },
@@ -93,7 +105,7 @@ app.get('/openapi.yaml', (_req, res) => {
         path.join(process.cwd(), 'src', 'openapi', 'openapi.yaml'),
         path.join(process.cwd(), 'dist', 'openapi', 'openapi.yaml'),
         path.join(__dirname, 'openapi', 'openapi.yaml'),
-        path.join(__dirname, '..', 'src', 'openapi', 'openapi.yaml')
+        path.join(__dirname, '..', 'openapi', 'openapi.yaml')
     ];
     const filePath = candidatePaths.find((p) => fs.existsSync(p));
     if (!filePath) {

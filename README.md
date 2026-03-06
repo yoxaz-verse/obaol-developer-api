@@ -34,7 +34,12 @@ The OBAOL Developer API also exposes an MCP endpoint for agent/tool integrations
 - Transport:
   - `GET /mcp` for SSE stream
   - `POST /mcp?sessionId=...` for MCP JSON-RPC messages
-- Authentication: `Authorization: Bearer <API_KEY>`
+- Authentication:
+  - Connect (`GET /mcp`): no auth required
+  - Messages (`POST /mcp`): API key required via either:
+    - `Authorization: Bearer <API_KEY>`
+    - `?apiKey=<API_KEY>`
+    - `?connectorToken=<MCP_CONNECTOR_TOKEN>`
 
 ### Why `/mcp` looks like a blank page
 
@@ -45,10 +50,19 @@ For human verification, use `/mcp/info` and `/mcp/health`.
 
 Use these settings in ChatGPT Apps:
 
-1. MCP Server URL: `https://api.obaol.com/mcp`
-2. Authentication: API key header
-3. Header value format: `Authorization: Bearer <API_KEY>`
-4. Do not use `No Auth` in production.
+1. MCP Server URL: `https://api.obaol.com/mcp?connectorToken=<MCP_CONNECTOR_TOKEN>`
+2. Authentication: `No Auth`
+3. Leave custom headers empty (token is in query for this compatibility phase).
+4. Rotate/revoke connector tokens and treat connector URLs as secrets.
+
+### Developer connector token endpoints
+
+Developer JWT protected endpoints for managing MCP connector tokens:
+
+- `GET /v1/dev-mcp/connectors`
+- `POST /v1/dev-mcp/connectors`
+- `POST /v1/dev-mcp/connectors/:id/revoke`
+- `POST /v1/dev-mcp/validate`
 
 ### MCP tools
 

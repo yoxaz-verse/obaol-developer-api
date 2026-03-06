@@ -90,16 +90,22 @@ app.get('/docs', (_req, res) => {
     openapi: 'https://api.obaol.com/openapi.yaml',
     mcp: 'https://api.obaol.com/mcp',
     authentication: {
-      type: 'apiKey',
+      type: 'mixed',
+      connect: 'No Auth (GET /mcp)',
+      messages: 'API key required on POST /mcp',
       header: 'Authorization',
-      format: 'Bearer <API_KEY>'
+      query: 'apiKey or connectorToken',
+      format: 'Bearer <API_KEY|CONNECTOR_TOKEN> or ?apiKey=<API_KEY> or ?connectorToken=<MCP_CONNECTOR_TOKEN>',
+      recommendedForChatGPT: 'Use connectorToken URL in No Auth connector mode.'
     },
     endpoints: [
       { method: 'GET', path: '/health', description: 'Health check endpoint' },
       { method: 'GET', path: '/mcp/health', description: 'MCP health endpoint (JSON)' },
       { method: 'GET', path: '/mcp/info', description: 'MCP metadata and tools (JSON)' },
-      { method: 'GET', path: '/mcp', description: 'MCP SSE stream endpoint (requires API key)' },
-      { method: 'POST', path: '/mcp?sessionId=...', description: 'MCP JSON-RPC transport endpoint (requires API key)' },
+      { method: 'GET', path: '/mcp', description: 'MCP SSE stream endpoint (No Auth connect; optionally include ?apiKey=... or ?connectorToken=...)' },
+      { method: 'POST', path: '/mcp?sessionId=...&apiKey=...|connectorToken=...', description: 'MCP JSON-RPC transport endpoint (auth required)' },
+      { method: 'GET', path: '/v1/dev-mcp/connectors', description: 'Developer connector tokens list (developer auth required)' },
+      { method: 'POST', path: '/v1/dev-mcp/connectors', description: 'Create MCP connector token (developer auth required)' },
       { method: 'GET', path: '/v1/prices', description: 'Fetch prices by optional commodity filter' },
       { method: 'GET', path: '/v1/traders', description: 'Fetch traders by optional verified filter' },
       { method: 'POST', path: '/v1/inquiries', description: 'Create a new inquiry' },

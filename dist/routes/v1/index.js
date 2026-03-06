@@ -11,6 +11,7 @@ const productsRouter = require('./products');
 const devAuthRouter = require('./devAuth');
 const devKeysRouter = require('./devKeys');
 const devUsageRouter = require('./devUsage');
+const devMcpRouter = require('./devMcp');
 const { apiKeyAuth } = require('../../middleware/apiKeyAuth');
 const { devAuth } = require('../../middleware/devAuth');
 const { apiKeyRateLimiter } = require('../../middleware/rateLimiter');
@@ -20,6 +21,7 @@ const router = express.Router();
 router.use('/dev-auth', devAuthRouter);
 router.use('/dev-keys', devAuth, devKeysRouter);
 router.use('/dev-usage', devAuth, devUsageRouter);
+router.use('/dev-mcp', devAuth, devMcpRouter);
 // Business APIs protected by API key.
 router.use(apiKeyAuth, apiKeyRateLimiter, apiUsageTracker);
 router.use('/prices', pricesRouter);

@@ -5,6 +5,7 @@
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const ApiKey = require('../models/ApiKey');
+const McpConnectorToken = require('../models/McpConnectorToken');
 
 /**
  * Derives deterministic HMAC hash for token lookup.
@@ -36,15 +37,66 @@ async function apiKeyAuth(req, res, next) {
   try {
     const auth = req.headers.authorization || '';
     let rawToken = '';
+    let authMode = 'apiKey';
 
     if (auth.startsWith('Bearer ')) {
       rawToken = auth.slice(7).trim();
+    } else if (req.query.connectorToken) {
+      rawToken = String(req.query.connectorToken).trim();
+      authMode = 'connectorToken';
     } else if (req.query.apiKey || req.query.token) {
       rawToken = String(req.query.apiKey || req.query.token).trim();
     }
 
+    if (!rawToken && auth.startsWith('Bearer connector ')) {
+      rawToken = auth.slice('Bearer connector '.length).trim();
+      authMode = 'connectorToken';
+    }
+
     if (!rawToken) {
-      return res.status(401).json({ success: false, message: 'Missing or invalid Authorization header or apiKey parameter.' });
+      return res.status(401).json({ success: false, message: 'Missing or invalid Authorization header, apiKey, or connectorToken parameter.' });
+    }
+
+    // Connector token mode: maps to an active underlying API key.
+    if (authMode === 'connectorToken') {
+      const derivedConnectorHash = deriveTokenHash(rawToken);
+      const now = new Date();
+      const connector = await McpConnectorToken.findOne({
+        token_hash: derivedConnectorHash,
+        is_active: true,
+        revoked_at: null,
+        $or: [{ expires_at: null }, { expires_at: { $gt: now } }]
+      }).lean();
+
+      if (!connector) {
+        return res.status(401).json({ success: false, message: 'Invalid or expired connector token.' });
+      }
+
+      const apiKey = await ApiKey.findOne({
+        _id: connector.apiKeyId,
+        is_active: true,
+        revoked_at: null
+      }).lean();
+
+      if (!apiKey) {
+        return res.status(401).json({ success: false, message: 'Connector token is linked to an inactive API key.' });
+      }
+
+      req.apiKey = {
+        id: String(apiKey._id),
+        developerId: apiKey.developerId ? String(apiKey.developerId) : null,
+        name: apiKey.name || apiKey.label || 'Unnamed key',
+        key_prefix: apiKey.key_prefix || null,
+        permissions: Array.isArray(apiKey.permissions) ? apiKey.permissions : [],
+        rate_limit: Number(apiKey.rate_limit || 60)
+      };
+      req.mcpConnector = {
+        id: String(connector._id),
+        token_prefix: connector.token_prefix || null
+      };
+
+      await McpConnectorToken.updateOne({ _id: connector._id }, { $set: { last_used_at: now } });
+      return next();
     }
 
     const derivedHash = deriveTokenHash(rawToken);
@@ -68,6 +120,42 @@ async function apiKeyAuth(req, res, next) {
     }
 
     if (!apiKey) {
+      // Fallback: allow connector token in Authorization Bearer form.
+      const now = new Date();
+      const connector = await McpConnectorToken.findOne({
+        token_hash: derivedHash,
+        is_active: true,
+        revoked_at: null,
+        $or: [{ expires_at: null }, { expires_at: { $gt: now } }]
+      }).lean();
+
+      if (connector) {
+        const mappedKey = await ApiKey.findOne({
+          _id: connector.apiKeyId,
+          is_active: true,
+          revoked_at: null
+        }).lean();
+
+        if (!mappedKey) {
+          return res.status(401).json({ success: false, message: 'Connector token is linked to an inactive API key.' });
+        }
+
+        req.apiKey = {
+          id: String(mappedKey._id),
+          developerId: mappedKey.developerId ? String(mappedKey.developerId) : null,
+          name: mappedKey.name || mappedKey.label || 'Unnamed key',
+          key_prefix: mappedKey.key_prefix || null,
+          permissions: Array.isArray(mappedKey.permissions) ? mappedKey.permissions : [],
+          rate_limit: Number(mappedKey.rate_limit || 60)
+        };
+        req.mcpConnector = {
+          id: String(connector._id),
+          token_prefix: connector.token_prefix || null
+        };
+        await McpConnectorToken.updateOne({ _id: connector._id }, { $set: { last_used_at: now } });
+        return next();
+      }
+
       return res.status(401).json({ success: false, message: 'Invalid API key.' });
     }
 

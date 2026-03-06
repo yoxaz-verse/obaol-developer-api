@@ -27,7 +27,14 @@ async function loadSdk() {
   return sdkPromise;
 }
 
-async function buildSessionServer(apiKey) {
+function maskKeyForLog(raw) {
+  const token = String(raw || '').trim();
+  if (!token) return 'none';
+  if (token.length <= 8) return `${token.slice(0, 2)}***`;
+  return `${token.slice(0, 4)}...${token.slice(-4)}`;
+}
+
+async function buildSessionServer(getApiKey) {
   const { Server, ListToolsRequestSchema, CallToolRequestSchema } = await loadSdk();
 
   const mcpServer = new Server(
@@ -49,7 +56,7 @@ async function buildSessionServer(apiKey) {
   mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
     const toolName = request?.params?.name;
     const toolArgs = request?.params?.arguments || {};
-    const data = await executeTool(toolName, toolArgs, apiKey);
+    const data = await executeTool(toolName, toolArgs, getApiKey());
 
     return {
       content: [
@@ -90,13 +97,20 @@ router.get('/info', (_req, res) => {
     name: 'obaol-mcp-server',
     version: '1.0.0',
     auth: {
-      required: true,
-      header: 'Authorization',
-      format: 'Bearer <API_KEY>'
+      mode: 'NO_AUTH_CONNECT__API_KEY_ON_MESSAGES',
+      connect: {
+        required: false
+      },
+      messages: {
+        required: true,
+        header: 'Authorization',
+        query: 'apiKey or connectorToken',
+        format: 'Bearer <API_KEY|CONNECTOR_TOKEN> or ?apiKey=<API_KEY> or ?connectorToken=<MCP_CONNECTOR_TOKEN>'
+      }
     },
     transport: {
-      connect: 'GET /mcp',
-      messages: 'POST /mcp?sessionId=<id>'
+      connect: 'GET /mcp or GET /mcp?apiKey=<API_KEY> or GET /mcp?connectorToken=<MCP_CONNECTOR_TOKEN>',
+      messages: 'POST /mcp?sessionId=<id>&apiKey=<API_KEY> or POST /mcp?sessionId=<id>&connectorToken=<MCP_CONNECTOR_TOKEN>'
     },
     tools: TOOL_DEFINITIONS.map((tool) => ({
       name: tool.name,
@@ -105,17 +119,20 @@ router.get('/info', (_req, res) => {
   });
 });
 
-router.use(apiKeyAuth);
-
 /**
  * GET /mcp
  * Opens the MCP SSE transport stream for a new session.
  */
 router.get('/', async (req, res) => {
   try {
-    const apiKey = req.apiKey;
-    const authType = req.headers.authorization ? 'header' : 'query';
-    console.log(`[MCP] New SSE session: auth=${authType}, key=${apiKey?.name || 'unknown'}`);
+    const rawApiKey = req.query?.apiKey || req.query?.token;
+    const rawConnectorToken = req.query?.connectorToken;
+    let endpointWithAuth = '/mcp';
+    if (rawApiKey) {
+      endpointWithAuth = `/mcp?apiKey=${encodeURIComponent(String(rawApiKey))}`;
+    } else if (rawConnectorToken) {
+      endpointWithAuth = `/mcp?connectorToken=${encodeURIComponent(String(rawConnectorToken))}`;
+    }
 
     res.setHeader('X-Accel-Buffering', 'no');
     res.setHeader('Cache-Control', 'no-cache');
@@ -125,15 +142,23 @@ router.get('/', async (req, res) => {
     res.flushHeaders();
 
     const { SSEServerTransport } = await loadSdk();
-    const transport = new SSEServerTransport('/mcp', res);
-    const server = await buildSessionServer(apiKey);
-
-    sessions.set(transport.sessionId, {
-      server,
+    const transport = new SSEServerTransport(endpointWithAuth, res);
+    const session = {
+      server: null,
       transport,
-      apiKeyId: apiKey?.id || null,
-      apiKey
-    });
+      apiKeyId: null,
+      apiKey: null
+    };
+    const server = await buildSessionServer(() => session.apiKey);
+    session.server = server;
+
+    sessions.set(transport.sessionId, session);
+
+    const origin = req.headers.origin || 'n/a';
+    const userAgent = String(req.headers['user-agent'] || '').slice(0, 120);
+    console.log(
+      `[MCP] SSE session created: sessionId=${transport.sessionId} hasApiKeyOnGet=${Boolean(rawApiKey)} hasConnectorOnGet=${Boolean(rawConnectorToken)} key=${maskKeyForLog(rawApiKey || rawConnectorToken)} origin=${origin} ua="${userAgent}"`
+    );
 
     req.on('close', () => {
       sessions.delete(transport.sessionId);
@@ -145,7 +170,17 @@ router.get('/', async (req, res) => {
     await server.connect(transport);
   } catch (error) {
     const message = error?.message || 'Failed to initialize MCP SSE transport.';
-    return res.status(500).json({ success: false, message });
+    console.error('[MCP] SSE setup error:', message);
+    if (res.headersSent) {
+      // Headers already flushed as SSE stream — cannot send JSON.
+      // Write an SSE error event and close the stream instead.
+      try {
+        res.write(`event: error\ndata: ${JSON.stringify({ error: message })}\n\n`);
+        res.end();
+      } catch (_) { /* ignore */ }
+    } else {
+      res.status(500).json({ success: false, message });
+    }
   }
 });
 
@@ -153,7 +188,7 @@ router.get('/', async (req, res) => {
  * POST /mcp
  * Receives MCP JSON-RPC messages for an existing SSE session.
  */
-router.post('/', async (req, res) => {
+router.post('/', apiKeyAuth, async (req, res) => {
   try {
     const requestId = req.body?.id ?? null;
     const sessionId = String(req.query.sessionId || '');
@@ -178,7 +213,27 @@ router.post('/', async (req, res) => {
       );
     }
 
-    if (!req.apiKey || req.apiKey.id !== session.apiKeyId) {
+    if (!req.apiKey) {
+      return jsonRpcError(
+        res,
+        requestId,
+        -32003,
+        'Missing API key for MCP message.',
+        401
+      );
+    }
+
+    if (!session.apiKeyId) {
+      session.apiKeyId = req.apiKey.id;
+      session.apiKey = req.apiKey;
+      const keyPrefix = String(req.apiKey?.key_prefix || '').trim();
+      console.log(
+        `[MCP] Session key bound: sessionId=${sessionId} key=${keyPrefix || String(req.apiKey.id || '').slice(0, 8)}`
+      );
+    } else if (req.apiKey.id !== session.apiKeyId) {
+      console.warn(
+        `[MCP] Session/API key mismatch: sessionId=${sessionId} expected=${String(session.apiKeyId).slice(0, 8)} got=${String(req.apiKey.id || '').slice(0, 8)}`
+      );
       return jsonRpcError(
         res,
         requestId,
