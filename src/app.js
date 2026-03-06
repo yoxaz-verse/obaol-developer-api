@@ -27,6 +27,7 @@ const ALLOWED_ORIGINS = new Set([
   'https://chat.openai.com',
   'https://chatgpt.com',
   'https://obaol.com',
+  'https://www.obaol.com',
   'https://developers.obaol.com',
   'http://localhost:3000',
   ...ENV_ALLOWED_ORIGINS
